@@ -3,7 +3,7 @@
   <meta>
     <identity>
       <uri>urn:org:netkernel:neo4j:embedded</uri>
-      <version>1.7.2</version>
+      <version>3.2.2</version>
     </identity>
     <info>
       <name>netkernel neo4j embedded</name>

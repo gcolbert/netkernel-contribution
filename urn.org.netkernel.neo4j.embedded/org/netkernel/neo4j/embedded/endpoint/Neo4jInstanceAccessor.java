@@ -18,61 +18,66 @@ import java.util.Map;
 import java.util.concurrent.ConcurrentHashMap;
 
 public class Neo4jInstanceAccessor extends StandardAccessorImpl {
+
+	/**
+	 * Argument for GraphDatabaseService.isAvailable(), which defines the
+	 * duration after which the database is considered unavailable.
+	 */
+	private static final long NEO4J_TIMEOUT = 200;
+
 	private static ConcurrentHashMap<String, GraphDatabaseService> mInstances;
+
 	private static URL mBaseLocationURL = null;
-	
+
 	private String getDBPath(INKFRequestContext aContext) throws Exception {
 		String vDBPath = null;
 		try {
-			IHDSNode vNeo4jConfig = aContext.source("res:/etc/neo4jConfig.xml",IHDSNode.class);
-			String vPath = (String)vNeo4jConfig.getFirstValue("/config/path");
-			
-			if (! vPath.endsWith("/") ) {
+			IHDSNode vNeo4jConfig = aContext.source("res:/etc/neo4jConfig.xml", IHDSNode.class);
+			String vPath = (String) vNeo4jConfig.getFirstValue("/config/path");
+
+			if (!vPath.endsWith("/")) {
 				throw new NKFException("DBPath name is invalid");
 			}
-			
+
 			if (vPath.startsWith("/")) {
 				vDBPath = vPath;
-			}
-			else {
+			} else {
 				vDBPath = mBaseLocationURL.getFile() + vPath;
 			}
-		}
-		catch (Exception e){
+		} catch (Exception e) {
 			vDBPath = mBaseLocationURL.getFile() + "tmp/";
 		}
 		return vDBPath;
 	}
 
-    class InstanceExpiry implements INKFExpiryFunction {
-    	private Neo4jInstance mInstanceRepresentation = null;
-    	public InstanceExpiry(Neo4jInstance aInstanceRepresentation) {
-    		mInstanceRepresentation = aInstanceRepresentation;
-    	}
-    	
-    	public boolean isExpired(long aNow) {
-    		try {
-    			mInstanceRepresentation.getInstance().getReferenceNode();
-    			return true;
-    		}
-    		catch (Exception e) {
-    			return false;
-    		}
-    	}
-    }
-    
+	class InstanceExpiry implements INKFExpiryFunction {
+		private Neo4jInstance mInstanceRepresentation = null;
+
+		public InstanceExpiry(Neo4jInstance aInstanceRepresentation) {
+			mInstanceRepresentation = aInstanceRepresentation;
+		}
+
+		public boolean isExpired(long aNow) {
+			if (! mInstanceRepresentation.getInstance().isAvailable(NEO4J_TIMEOUT)) {
+				return true;
+			} else {
+				return false;
+			}
+		}
+	}
+
 	public Neo4jInstanceAccessor() {
 		this.declareThreadSafe();
-		this.declareSourceRepresentation(Neo4jInstance.class);		
+		this.declareSourceRepresentation(Neo4jInstance.class);
 		mInstances = new ConcurrentHashMap<String, GraphDatabaseService>();
 	}
-	
+
 	public void postCommission(INKFRequestContext aContext) throws Exception {
 		String vBaseURL = aContext.source("netkernel:/config/netkernel.install.path", String.class);
 		String vLocationString = vBaseURL + "neo4j/";
 		mBaseLocationURL = new URL(vLocationString);
 		File vLocationDirectory = new File(mBaseLocationURL.getFile());
-		
+
 		if (!(vLocationDirectory.exists() && vLocationDirectory.isDirectory())) {
 			if (!vLocationDirectory.mkdir()) {
 				throw new NKFException("Can not create [install]/neo4j directory.");
@@ -82,21 +87,17 @@ public class Neo4jInstanceAccessor extends StandardAccessorImpl {
 
 	public void onSource(INKFRequestContext aContext) throws Exception {
 		String vDBPath = getDBPath(aContext);
-		
-		if (! mInstances.containsKey(vDBPath)) {
-			GraphDatabaseService vInstance = new GraphDatabaseFactory().newEmbeddedDatabase(vDBPath);
-			aContext.logFormatted(INKFLocale.LEVEL_INFO,"MSG_NEO4J_START", vDBPath);
+
+		if (!mInstances.containsKey(vDBPath)) {
+			GraphDatabaseService vInstance = new GraphDatabaseFactory().newEmbeddedDatabase(new File(vDBPath));
+			aContext.logFormatted(INKFLocale.LEVEL_INFO, "MSG_NEO4J_START", vDBPath);
 			mInstances.put(vDBPath, vInstance);
-		}
-		else {
-			try {
-				GraphDatabaseService vInstance = mInstances.get(vDBPath);
-				vInstance.getReferenceNode();
-			}
-			catch (Exception e) {
-				aContext.logFormatted(INKFLocale.LEVEL_INFO,"MSG_NEO4J_WASSHUTRESTART", vDBPath);
-				GraphDatabaseService vInstance = new GraphDatabaseFactory().newEmbeddedDatabase(vDBPath);
-				aContext.logFormatted(INKFLocale.LEVEL_INFO,"MSG_NEO4J_START", vDBPath);
+		} else {
+			GraphDatabaseService vInstance = mInstances.get(vDBPath);
+			if (!vInstance.isAvailable(NEO4J_TIMEOUT)) {
+				aContext.logFormatted(INKFLocale.LEVEL_INFO, "MSG_NEO4J_WASSHUTRESTART", vDBPath);
+				vInstance = new GraphDatabaseFactory().newEmbeddedDatabase(new File(vDBPath));
+				aContext.logFormatted(INKFLocale.LEVEL_INFO, "MSG_NEO4J_START", vDBPath);
 				mInstances.put(vDBPath, vInstance);
 			}
 		}
@@ -110,7 +111,7 @@ public class Neo4jInstanceAccessor extends StandardAccessorImpl {
 
 		if (mInstances.containsKey(vDBPath)) {
 			GraphDatabaseService vInstance = mInstances.get(vDBPath);
-			aContext.logFormatted(INKFLocale.LEVEL_INFO,"MSG_NEO4J_SHUT", vDBPath);
+			aContext.logFormatted(INKFLocale.LEVEL_INFO, "MSG_NEO4J_SHUT", vDBPath);
 			vInstance.shutdown();
 			mInstances.remove(vDBPath);
 
@@ -122,22 +123,19 @@ public class Neo4jInstanceAccessor extends StandardAccessorImpl {
 			org.netkernel.neo4j.embedded.endpoint.Neo4jTransactionAccessor.mTransactions.clear();
 
 			aContext.createResponseFrom(true);
-		}
-		else {
+		} else {
 			aContext.createResponseFrom(false);
 		}
 	}
 
 	public void preDecommission(INKFRequestContext aContext) throws Exception {
-		for(Map.Entry<String, GraphDatabaseService> e: mInstances.entrySet()) {
+		for (Map.Entry<String, GraphDatabaseService> e : mInstances.entrySet()) {
 			GraphDatabaseService vInstance = e.getValue();
 			try {
-				vInstance.getReferenceNode();
 				vInstance.shutdown();
-				aContext.logFormatted(INKFLocale.LEVEL_INFO,"MSG_NEO4J_SHUT", e.getKey());
-			}
-			catch (Exception shutException) {
-				aContext.logFormatted(INKFLocale.LEVEL_INFO,"MSG_NEO4J_WASSHUT", e.getKey());
+				aContext.logFormatted(INKFLocale.LEVEL_INFO, "MSG_NEO4J_SHUT", e.getKey());
+			} catch (Exception shutException) {
+				aContext.logFormatted(INKFLocale.LEVEL_INFO, "MSG_NEO4J_WASSHUT", e.getKey());
 			}
 		}
 		INKFRequest subrequest = aContext.createRequest("active:cutGoldenThread");
@@ -146,7 +144,7 @@ public class Neo4jInstanceAccessor extends StandardAccessorImpl {
 		aContext.issueRequest(subrequest);
 		org.netkernel.neo4j.embedded.endpoint.Neo4jNodeAccessor.mNodes.clear();
 		org.netkernel.neo4j.embedded.endpoint.Neo4jTransactionAccessor.mTransactions.clear();
-		
+
 		mInstances = null;
 	}
 }

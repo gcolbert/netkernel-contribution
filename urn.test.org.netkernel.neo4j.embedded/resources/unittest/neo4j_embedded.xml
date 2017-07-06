@@ -36,7 +36,7 @@
       <verb>SOURCE</verb>
     </request>
     <assert>
-      <regex>\[Node.*\]\]</regex>
+      <regex>Node\[0-9*\]</regex>
     </assert>
   </test>
   <test name="show spartan entity">
@@ -46,7 +46,7 @@
       <verb>SOURCE</verb>
     </request>
     <assert>
-      <regex>\[Node.*\]\]</regex>
+      <regex>Node\[0-9*\]</regex>
     </assert>
   </test>
   <test name="show leonidas">
@@ -56,7 +56,7 @@
       <verb>SOURCE</verb>
     </request>
     <assert>
-      <regex>\[Node.*\]\]</regex>
+      <regex>Node\[0-9*\]</regex>
     </assert>
   </test>
   <test name="delete leonidas">

@@ -3,7 +3,7 @@
   <meta>
     <identity>
       <uri>urn:test:org:netkernel:neo4j:embedded</uri>
-      <version>1.7.2</version>
+      <version>3.2.2</version>
     </identity>
     <info>
       <name>test neo4j embedded</name>
@@ -19,6 +19,7 @@
     name="test neo4j embedded unittest"
     public="true"
     uri="urn:test:org:netkernel:neo4j:embedded:unittest">
+
     <fileset>
       <regex>res:/etc/system/Tests.xml</regex>
     </fileset>
